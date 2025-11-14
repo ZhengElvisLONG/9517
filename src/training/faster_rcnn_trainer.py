@@ -81,7 +81,8 @@ class FasterRCNNTrainer:
 
         self.optimizer = self._build_optimizer()
         self.scheduler = self._build_scheduler()
-        self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
+        # 使用新的 torch.amp API 替代已弃用的 torch.cuda.amp
+        self.scaler = torch.amp.GradScaler("cuda", enabled=cfg.amp) if cfg.amp else None
 
     def _build_optimizer(self) -> Optimizer:
         params = [p for p in self.model.parameters() if p.requires_grad]
@@ -117,27 +118,48 @@ class FasterRCNNTrainer:
     def _train_one_epoch(self, epoch: int) -> float:
         self.model.train()
         running_loss = 0.0
-        batches = len(self.train_loader)
+        batches_processed = 0  # 实际处理的批次数量（排除空标注）
 
         progress = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.cfg.epochs}", unit="batch")
         for batch_idx, (images, targets) in enumerate(progress):
-            images = [img.to(self.device) for img in images]
-            targets = self._move_targets_to_device(targets)
+            # 过滤掉空标注的样本（没有标注框的图像）
+            # Faster R-CNN 在训练时要求每个样本至少有一个标注框
+            filtered_images = []
+            filtered_targets = []
+            for img, tgt in zip(images, targets):
+                # 检查是否有标注框（boxes 不为空）
+                if tgt["boxes"].numel() > 0 and tgt["boxes"].shape[0] > 0:
+                    filtered_images.append(img)
+                    filtered_targets.append(tgt)
+            
+            # 如果批次中所有样本都是空标注，跳过这个批次
+            if not filtered_images:
+                continue
+            
+            # 将过滤后的数据移到设备上
+            filtered_images = [img.to(self.device) for img in filtered_images]
+            filtered_targets = self._move_targets_to_device(filtered_targets)
 
             self.optimizer.zero_grad()
-            with torch.cuda.amp.autocast(enabled=self.cfg.amp):
-                loss_dict = self.model(images, targets)
+            # 使用新的 torch.amp API 替代已弃用的 torch.cuda.amp
+            with torch.amp.autocast("cuda", enabled=self.cfg.amp):
+                loss_dict = self.model(filtered_images, filtered_targets)
                 losses = sum(loss for loss in loss_dict.values())
 
-            self.scaler.scale(losses).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            if self.scaler is not None:
+                self.scaler.scale(losses).backward()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                losses.backward()
+                self.optimizer.step()
 
             loss_value = losses.item()
             running_loss += loss_value
+            batches_processed += 1
             progress.set_postfix({"loss": f"{loss_value:.4f}"})
 
-        avg_loss = running_loss / max(1, batches)
+        avg_loss = running_loss / max(1, batches_processed)
         return avg_loss
 
     def _evaluate_classification(self) -> ClassificationMetrics:
@@ -228,9 +250,11 @@ class FasterRCNNTrainer:
             "epoch": epoch + 1,
             "model_state": self.model.state_dict(),
             "optimizer_state": self.optimizer.state_dict(),
-            "scaler_state": self.scaler.state_dict(),
             "config": asdict(self.cfg),
         }
+        # 只有在使用 AMP 时才保存 scaler 状态
+        if self.scaler is not None:
+            state["scaler_state"] = self.scaler.state_dict()
         suffix = "best" if best else f"epoch{epoch+1}"
         ckpt_path = self.output_dir / f"faster_rcnn_{suffix}.pth"
         torch.save(state, ckpt_path)

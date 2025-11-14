@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Dict
 
 import torch
 from torch.utils.data import DataLoader
+
+# 自动添加项目根目录到 Python 路径，确保可以导入 src 模块
+# 获取脚本所在目录的父目录（项目根目录）
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from src.datasets.agropest import AgroPestDataset, detection_collate_fn
 from src.evaluation.coco import evaluate_coco_map

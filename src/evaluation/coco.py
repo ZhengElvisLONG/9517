@@ -49,7 +49,14 @@ def dataset_to_coco_dict(dataset: AgroPestDataset) -> Dict:
             )
             annotation_id += 1
 
+    # COCO 格式需要包含 'info' 和 'licenses' 字段
     return {
+        "info": {
+            "description": "AgroPest-12 Dataset",
+            "version": "1.0",
+            "year": 2025,
+        },
+        "licenses": [],
         "images": images,
         "annotations": annotations,
         "categories": categories,

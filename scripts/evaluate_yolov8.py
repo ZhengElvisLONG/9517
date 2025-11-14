@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -10,6 +11,12 @@ import torch
 import yaml
 from tqdm import tqdm
 from ultralytics import YOLO
+
+# 自动添加项目根目录到 Python 路径，确保可以导入 src 模块
+# 获取脚本所在目录的父目录（项目根目录）
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from src.datasets.agropest import AgroPestDataset
 from src.evaluation.matching import greedy_match_iou
