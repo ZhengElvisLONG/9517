@@ -1,0 +1,16 @@
+{
+  "data_root": "data",
+  "output_dir": "experiments/faster_rcnn",
+  "epochs": 25,
+  "batch_size": 4,
+  "lr": 0.005,
+  "backbone": "resnet50",
+  "optimizer": "sgd",
+  "scheduler": "step",
+  "step_size": 8,
+  "gamma": 0.1,
+  "num_workers": 4,
+  "device": "cuda",
+  "classification_iou": 0.5,
+  "patience": 5
+}
